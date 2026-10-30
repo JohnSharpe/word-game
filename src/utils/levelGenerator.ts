@@ -14,8 +14,8 @@ export function generateScrollyLevel(
     const maxPossibleSwapsAcrossBoard = Math.floor(numRows / 2);
     
     const config = {
-      minLettersPerRow: options.minLettersPerRow ?? 5,
-      maxLettersPerRow: options.maxLettersPerRow ?? 7,
+      minLettersPerRow: options.minLettersPerRow ?? 3,
+      maxLettersPerRow: options.maxLettersPerRow ?? 8,
       minRowSwaps: Math.max(0, options.minRowSwaps ?? 0),
       maxRowSwaps: Math.max(0, options.maxRowSwaps ?? maxPossibleSwapsAcrossBoard)
     };
@@ -34,36 +34,26 @@ export function generateScrollyLevel(
     for (let i = 0; i < numRows; i++) {
       const targetLetter: string = word[i];
       
-      // 1. Calculate a valid odd row length within boundaries
       let rowLength: number = Math.floor(Math.random() * (config.maxLettersPerRow - config.minLettersPerRow + 1)) + config.minLettersPerRow;
-      if (rowLength % 2 === 0) {
-        rowLength = Math.max(config.minLettersPerRow, rowLength - 1);
-        if (rowLength % 2 === 0) rowLength += 1;
-      }
   
-      // Clamp the raw data array width to 9 max (4 left, 1 center, 4 right)
+      // Hard ceiling clamp (Odd caps at 9, Even caps at 8)
       if (rowLength > 9) rowLength = 9;
   
+      // FIX: Your Vue layout calculates its middle frame index using Math.floor(rowLength / 2).
+      // For even numbers, this floor division moves the reference point rightward.
       const absoluteMiddleIndex: number = Math.floor(rowLength / 2);
   
-      // 2. CHOOSE THE INITIAL SHIFT WITH AN EXPLICIT BOUNDARY GUARD
-      // Your UI calculates starting view index as: startingIndex = absoluteMiddleIndex - currentShift
-      // - To prevent > 4 characters on the right of the start: startingIndex must be >= (rowLength - 1) - 4
-      // - To prevent > 4 characters on the left of the start: startingIndex must be <= 4
-      // We translate these constraints directly into allowed values for currentShift:
+      // Calculate layout shift boundaries based on your "Max 4 letters on either side" rule
       const maxAllowedShift = absoluteMiddleIndex - Math.max(0, (rowLength - 1) - 4);
       const minAllowedShift = absoluteMiddleIndex - 4;
 
-      // Safe clamp boundaries based on the row's physical limits
       const finalMinShift = Math.max(-absoluteMiddleIndex, minAllowedShift);
       const finalMaxShift = Math.min(absoluteMiddleIndex, maxAllowedShift);
   
-      // Pick a random shift safely inside the allowed envelope
       const currentShift: number = Math.floor(Math.random() * (finalMaxShift - finalMinShift + 1)) + finalMinShift;
       requiredMovesToSolve += Math.abs(currentShift);
   
-      // 3. Anchor the target letter exactly at the array midpoint
-      // This maintains perfect text alignment and prevents styling breaks
+      // Fixes even row placement misalignment cleanly inside the generator
       const targetPositionInArray: number = absoluteMiddleIndex;
   
       const letters: string[] = [];

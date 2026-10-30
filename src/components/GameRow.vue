@@ -22,14 +22,16 @@ const currentVisibleIndex = computed(() => absoluteMiddleIndex.value - props.row
 const hasBeenSwapped = computed(() => props.swappedRowIds.includes(props.row.id))
 const isSwapDisabled = computed(() => hasBeenSwapped.value || props.isGameOver || props.isGameWon)
 
-/**
- * FIXED CENTERING MATH:
- * Flexbox naturally targets the true array middle element when currentShift is 0.
- * We only need to translate the pixel value of the player's row movements.
- */
 const trackTransformStyle = computed(() => {
-  const offset = props.row.currentShift * TILE_SIZE_WITH_GAP
-  return { transform: `translateX(${offset}px)` }
+  const baseOffset = props.row.currentShift * TILE_SIZE_WITH_GAP
+  const isEvenLength = props.row.letters.length % 2 === 0
+  
+  // Half of TILE_SIZE_WITH_GAP (50px / 2 = 25px)
+  const evenOffsetAdjustment = isEvenLength ? TILE_SIZE_WITH_GAP / 2 : 0
+  
+  const totalOffset = baseOffset - evenOffsetAdjustment
+
+  return { transform: `translateX(${totalOffset}px)` }
 })
 
 function isDirectionDisabled(direction) {
