@@ -1,19 +1,27 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from 'vue'
+import type { ScrollyRow } from "../utils/models";
+import GameRow from './GameRow.vue';
+import { generateScrollyLevel } from '../utils/levelGenerator'
 
-const TARGET_WORD = "KEY"
-const TILE_WIDTH = 45
-const GAP = 5
-const TILE_SIZE_WITH_GAP = TILE_WIDTH + GAP // Exactly 50px
-const INITIAL_MOVES = 6
+// Would likely come from the server instead
+const targetWordConfig = "PLAYER" 
+const initialConfig = generateScrollyLevel(targetWordConfig, {
+  minLettersPerRow: 3,
+  maxLettersPerRow: 8,
+  minRowSwaps: 1,
+  maxRowSwaps: 3
+})
 
-const rows = ref([
-  { id: 1, letters: ['K', 'E', 'D', 'B', 'A'], currentShift: 0, minShift: -2, maxShift: 2, lockedDirection: null },
-  { id: 2, letters: ['O', 'M', 'E'], currentShift: 0, minShift: -1, maxShift: 1, lockedDirection: null },
-  { id: 3, letters: ['X', 'Z', 'L', 'M', 'N', 'X', 'Y'], currentShift: 0, minShift: -3, maxShift: 3, lockedDirection: null }
-])
+const TARGET_WORD = ref<string>(initialConfig.targetWord)
+const INITIAL_MOVES = ref<number>(initialConfig.initialMoves)
+const totalMovesLeft = ref<number>(initialConfig.initialMoves)
 
-const totalMovesLeft = ref(INITIAL_MOVES)
+const cachedInitialRows = JSON.parse(JSON.stringify(initialConfig.rows))
+const rows = ref<ScrollyRow[]>(initialConfig.rows)
+
+const selectedRowIndexForSwap = ref(null)
+const swappedRowIds = ref([])
 
 const currentCenterWord = computed(() => {
   return rows.value.map(row => {
@@ -23,22 +31,11 @@ const currentCenterWord = computed(() => {
   }).join('')
 })
 
-const isGameWon = computed(() => currentCenterWord.value === TARGET_WORD)
+const isGameWon = computed(() => totalMovesLeft.value <= 0 && currentCenterWord.value === TARGET_WORD.value)
 const isGameOver = computed(() => totalMovesLeft.value <= 0 && !isGameWon.value)
 
-function isDirectionDisabled(row, direction) {
-  if (isGameOver.value || isGameWon.value) return true
-  if (row.lockedDirection !== null && row.lockedDirection !== direction) {
-    return true
-  }
-  return false
-}
-
-function shiftRow(rowIndex, direction) {
+function handleShift({ rowIndex, direction }) {
   const row = rows.value[rowIndex]
-  
-  if (isGameOver.value || isGameWon.value) return
-  if (isDirectionDisabled(row, direction)) return
 
   if (direction === 'right') {
     if (row.currentShift >= row.maxShift) return
@@ -55,12 +52,39 @@ function shiftRow(rowIndex, direction) {
   }
 }
 
+function handleSwapSelection(rowIndex) {
+  const rowId = rows.value[rowIndex].id
+  
+  if (selectedRowIndexForSwap.value === null) {
+    selectedRowIndexForSwap.value = rowIndex
+    return
+  }
+
+  if (selectedRowIndexForSwap.value === rowIndex) {
+    selectedRowIndexForSwap.value = null
+    return
+  }
+
+  const firstIndex = selectedRowIndexForSwap.value
+  const secondIndex = rowIndex
+
+  const firstRow = rows.value[firstIndex]
+  const secondRow = rows.value[secondIndex]
+
+  rows.value[firstIndex] = secondRow
+  rows.value[secondIndex] = firstRow
+
+  swappedRowIds.value.push(firstRow.id, secondRow.id)
+
+  totalMovesLeft.value--
+  selectedRowIndexForSwap.value = null
+}
+
 function resetGame() {
-  rows.value.forEach(row => {
-    row.currentShift = 0
-    row.lockedDirection = null
-  })
-  totalMovesLeft.value = INITIAL_MOVES
+  rows.value = JSON.parse(JSON.stringify(cachedInitialRows))
+  totalMovesLeft.value = INITIAL_MOVES.value
+  selectedRowIndexForSwap.value = null
+  swappedRowIds.value = []
 }
 </script>
 
@@ -69,7 +93,7 @@ function resetGame() {
     <header>
       <h1>Scrolly</h1>
       <p class="rule-text">
-        ⚠️ <strong>Rules:</strong> You have {{ INITIAL_MOVES }} moves total. Moving any row locks <em>that specific row</em> into continuing in that direction or staying still!
+        ⚠️ <strong>Rules:</strong> You have {{ INITIAL_MOVES }} moves total. Moving any row locks <em>that row</em> into continuing in that direction. You can swap any two rows together for 1 move, but each row can only be swapped once!
       </p>
     </header>
 
@@ -81,56 +105,25 @@ function resetGame() {
 
     <!-- The Game Board Structure -->
     <div class="board-grid">
-      <template v-for="(row, rowIndex) in rows" :key="row.id">
-        
-        <!-- Left Button Channel -->
-        <div class="button-channel left-align">
-          <button 
-            class="arrow-btn" 
-            :disabled="row.currentShift === row.minShift || isDirectionDisabled(row, 'left')"
-            @click="shiftRow(rowIndex, 'left')"
-          >
-            ◀
-          </button>
-        </div>
-
-        <!-- Track Channel -->
-        <div class="track-channel">
-          <div class="viewfinder-frame"></div>
-          
-          <div 
-            class="letter-row"
-            :style="{ transform: `translateX(${ -(Math.floor(row.letters.length / 2) * TILE_SIZE_WITH_GAP) + (row.currentShift * TILE_SIZE_WITH_GAP) }px)` }"
-          >
-            <div 
-              v-for="(letter, letterIndex) in row.letters" 
-              :key="letterIndex" 
-              class="tile"
-              :class="{ 
-                'is-center-item': letterIndex === Math.floor(row.letters.length / 2) - row.currentShift,
-                'is-row-locked': row.lockedDirection !== null 
-              }"
-            >
-              {{ letter }}
-            </div>
-          </div>
-        </div>
-
-        <!-- Right Button Channel -->
-        <div class="button-channel right-align">
-          <button 
-            class="arrow-btn" 
-            :disabled="row.currentShift === row.maxShift || isDirectionDisabled(row, 'right')"
-            @click="shiftRow(rowIndex, 'right')"
-          >
-            ▶
-          </button>
-        </div>
-
-      </template>
+      <GameRow
+        v-for="(row, rowIndex) in rows"
+        :key="row.id"
+        :row="row"
+        :rowIndex="rowIndex"
+        :isGameOver="isGameOver"
+        :isGameWon="isGameWon"
+        :isSelectedForSwap="selectedRowIndexForSwap === rowIndex"
+        :swappedRowIds="swappedRowIds"
+        @shift="handleShift"
+        @swap-select="handleSwapSelection"
+      />
     </div>
 
-    <!-- Persistent Global Reset Button (Hidden only if a full Win/Lose screen overlay takes over) -->
+    <div v-if="!isGameWon && !isGameOver" class="current-word-display">
+      <span>{{ currentCenterWord }}</span>
+    </div>
+
+    <!-- Persistent Global Reset Button -->
     <button 
       v-if="!isGameWon && !isGameOver" 
       class="control-reset-btn" 
@@ -149,8 +142,7 @@ function resetGame() {
       💥 Game Over! Out of moves. 
       <button class="modal-reset-btn" @click="resetGame">Try Again</button>
     </div>
-    
-    <div v-else class="current-word-display">Lined Up: <span>{{ currentCenterWord }}</span></div>
+
   </div>
 </template>
 
@@ -165,14 +157,17 @@ function resetGame() {
   align-items: center;
   gap: 20px;
   max-width: 800px;
-  padding: 20px;
+  
+  /* Clear out the padding/margin layout defaults */
+  padding: 40px 20px;
+  margin: 0 auto;
+  
   color: white;
   font-family: sans-serif;
   
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  /* USE THIS TO CENTER ON TALLER VIEWPORTS INSTEAD: */
+  min-height: 100vh;
+  justify-content: center;
 }
 
 .rule-text {
@@ -206,9 +201,10 @@ function resetGame() {
   color: #f44336;
 }
 
+/* Changed layout setup to stack individual grid rows perfectly */
 .board-grid {
-  display: grid;
-  grid-template-columns: 60px 350px 60px;
+  display: flex;
+  flex-direction: column;
   row-gap: 20px;
   background-color: #1e1e24;
   padding: 30px 20px;
@@ -216,106 +212,9 @@ function resetGame() {
   border: 3px solid #2e2e38;
   align-items: center;
   overflow: hidden;
+  width: 680px;
 }
 
-.button-channel {
-  display: flex;
-  align-items: center;
-  height: 60px;
-  background-color: #1e1e24;
-  z-index: 10;
-}
-.button-channel.left-align { box-shadow: 10px 0 15px -5px #1e1e24; }
-.button-channel.right-align { box-shadow: -10px 0 15px -5px #1e1e24; }
-
-.track-channel {
-  position: relative;
-  display: flex;
-  justify-content: center; 
-  align-items: center;
-  height: 60px;
-  width: 100%;
-  overflow: hidden;
-  mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%);
-}
-
-.letter-row {
-  display: flex;
-  gap: 5px;
-  position: absolute;
-  left: calc(50% - 22.5px); 
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform;
-}
-
-.tile {
-  width: 45px;
-  height: 45px;
-  min-width: 45px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 1.6rem;
-  font-weight: bold;
-  background-color: #2d2d3a;
-  border: 2px solid #48485a;
-  border-radius: 8px;
-  user-select: none;
-  transition: all 0.2s;
-}
-
-.tile.is-center-item {
-  background-color: #e2b714;
-  color: #1e1e24;
-  border-color: #ffffff;
-}
-
-.tile.is-row-locked:not(.is-center-item) {
-  border-color: #5a5a73;
-  color: #888;
-}
-
-.viewfinder-frame {
-  position: absolute;
-  top: 5px;
-  bottom: 5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 45px;
-  height: 45px;
-  border: 2px dashed #e2b714;
-  background-color: rgba(226, 183, 20, 0.05);
-  border-radius: 8px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.arrow-btn {
-  background: #3e3e4f;
-  color: white;
-  border: none;
-  width: 42px;
-  height: 42px;
-  font-size: 1.1rem;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, opacity 0.15s;
-}
-
-.arrow-btn:hover:not(:disabled) {
-  background: #5a5a73;
-}
-
-.arrow-btn:disabled {
-  opacity: 0.15;
-  cursor: not-allowed;
-}
-
-/* Mid-Game Dedicated Reset Button Design */
 .control-reset-btn {
   background-color: #2d2d3a;
   color: #e2b714;
@@ -336,7 +235,6 @@ function resetGame() {
 .control-reset-btn:active {
   transform: translateY(1px);
 }
-
 .banner {
   display: flex;
   flex-direction: column;
@@ -348,10 +246,8 @@ function resetGame() {
   font-weight: bold;
   text-align: center;
 }
-
 .win-banner { background-color: #4caf50; }
 .lose-banner { background-color: #f44336; }
-
 .modal-reset-btn {
   background-color: white;
   color: black;
@@ -366,7 +262,6 @@ function resetGame() {
 .modal-reset-btn:hover {
   opacity: 0.9;
 }
-
 .current-word-display span {
   color: #e2b714;
   font-weight: bold;
