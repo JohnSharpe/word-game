@@ -11,17 +11,30 @@ export function generateScrollyLevel(
     const word: string = targetWord.toUpperCase();
     const numRows: number = word.length;
   
+    // 1. Establish structural constraints
+    const maxPossibleSwapsAcrossBoard = Math.floor(numRows / 2);
+    
     const config = {
       minLettersPerRow: options.minLettersPerRow ?? 5,
       maxLettersPerRow: options.maxLettersPerRow ?? 7,
+      minRowSwaps: Math.max(0, options.minRowSwaps ?? 0),
+      maxRowSwaps: Math.max(0, options.maxRowSwaps ?? maxPossibleSwapsAcrossBoard)
     };
+
+    // Ensure min doesn't exceed max, and max doesn't exceed physical board capabilities
+    config.maxRowSwaps = Math.min(config.maxRowSwaps, maxPossibleSwapsAcrossBoard);
+    config.minRowSwaps = Math.min(config.minRowSwaps, config.maxRowSwaps);
+
+    // Pick a deterministic target number of individual swap actions for this specific level
+    const targetSwapsCount = Math.floor(
+      Math.random() * (config.maxRowSwaps - config.minRowSwaps + 1)
+    ) + config.minRowSwaps;
   
     const rows: ScrollyRow[] = [];
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    
-    // Track the minimum moves absolutely required to solve the layout
     let requiredMovesToSolve = 0;
   
+    // 2. Generate the initial rows in solved sequential order
     for (let i = 0; i < numRows; i++) {
       const targetLetter: string = word[i];
       
@@ -35,15 +48,10 @@ export function generateScrollyLevel(
       const maxShift: number = absoluteMiddleIndex;
       const minShift: number = -absoluteMiddleIndex;
   
-      // Randomise the initial layout displacement position
       const currentShift: number = Math.floor(Math.random() * (maxShift - minShift + 1)) + minShift;
-  
-      // Accumulate the number of steps required to return this row's shift count back to 0
       requiredMovesToSolve += Math.abs(currentShift);
   
-      // Place the target letter exactly at the center index point
       const targetPositionInArray: number = absoluteMiddleIndex;
-  
       const letters: string[] = [];
       for (let l = 0; l < rowLength; l++) {
         if (l === targetPositionInArray) {
@@ -67,8 +75,28 @@ export function generateScrollyLevel(
         lockedDirection: null
       });
     }
+
+    // 3. Directly target the requested swap range count
+    let switchMovesCount = 0;
+    const availableIndices = Array.from({ length: numRows }, (_, idx) => idx);
+
+    while (switchMovesCount < targetSwapsCount && availableIndices.length >= 2) {
+      const idxA_pos = Math.floor(Math.random() * availableIndices.length);
+      const indexA = availableIndices.splice(idxA_pos, 1)[0];
+
+      const idxB_pos = Math.floor(Math.random() * availableIndices.length);
+      const indexB = availableIndices.splice(idxB_pos, 1)[0];
+
+      // Execute the swap
+      const temp = rows[indexA];
+      rows[indexA] = rows[indexB];
+      rows[indexB] = temp;
+
+      switchMovesCount += 1;
+    }
   
-    const initialMoves = requiredMovesToSolve;
+    // 4. Combine horizontal displacements with precise vertical layout switch counts
+    const initialMoves = requiredMovesToSolve + switchMovesCount;
   
     return {
       targetWord: word,
@@ -76,4 +104,3 @@ export function generateScrollyLevel(
       rows
     };
   }
-  

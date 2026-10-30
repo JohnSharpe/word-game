@@ -8,7 +8,9 @@ import { generateScrollyLevel } from '../utils/levelGenerator'
 const targetWordConfig = "PLAYER" 
 const initialConfig = generateScrollyLevel(targetWordConfig, {
   minLettersPerRow: 3,
-  maxLettersPerRow: 8
+  maxLettersPerRow: 8,
+  minRowSwaps: 1,
+  maxRowSwaps: 3
 })
 
 const TARGET_WORD = ref<string>(initialConfig.targetWord)
