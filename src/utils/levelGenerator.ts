@@ -11,7 +11,6 @@ export function generateScrollyLevel(
     const word: string = targetWord.toUpperCase();
     const numRows: number = word.length;
   
-    // 1. Establish structural constraints
     const maxPossibleSwapsAcrossBoard = Math.floor(numRows / 2);
     
     const config = {
@@ -21,11 +20,9 @@ export function generateScrollyLevel(
       maxRowSwaps: Math.max(0, options.maxRowSwaps ?? maxPossibleSwapsAcrossBoard)
     };
 
-    // Ensure min doesn't exceed max, and max doesn't exceed physical board capabilities
     config.maxRowSwaps = Math.min(config.maxRowSwaps, maxPossibleSwapsAcrossBoard);
     config.minRowSwaps = Math.min(config.minRowSwaps, config.maxRowSwaps);
 
-    // Pick a deterministic target number of individual swap actions for this specific level
     const targetSwapsCount = Math.floor(
       Math.random() * (config.maxRowSwaps - config.minRowSwaps + 1)
     ) + config.minRowSwaps;
@@ -34,24 +31,41 @@ export function generateScrollyLevel(
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let requiredMovesToSolve = 0;
   
-    // 2. Generate the initial rows in solved sequential order
     for (let i = 0; i < numRows; i++) {
       const targetLetter: string = word[i];
       
+      // 1. Calculate a valid odd row length within boundaries
       let rowLength: number = Math.floor(Math.random() * (config.maxLettersPerRow - config.minLettersPerRow + 1)) + config.minLettersPerRow;
       if (rowLength % 2 === 0) {
         rowLength = Math.max(config.minLettersPerRow, rowLength - 1);
         if (rowLength % 2 === 0) rowLength += 1;
       }
   
-      const absoluteMiddleIndex: number = Math.floor(rowLength / 2);
-      const maxShift: number = absoluteMiddleIndex;
-      const minShift: number = -absoluteMiddleIndex;
+      // Clamp the raw data array width to 9 max (4 left, 1 center, 4 right)
+      if (rowLength > 9) rowLength = 9;
   
-      const currentShift: number = Math.floor(Math.random() * (maxShift - minShift + 1)) + minShift;
+      const absoluteMiddleIndex: number = Math.floor(rowLength / 2);
+  
+      // 2. CHOOSE THE INITIAL SHIFT WITH AN EXPLICIT BOUNDARY GUARD
+      // Your UI calculates starting view index as: startingIndex = absoluteMiddleIndex - currentShift
+      // - To prevent > 4 characters on the right of the start: startingIndex must be >= (rowLength - 1) - 4
+      // - To prevent > 4 characters on the left of the start: startingIndex must be <= 4
+      // We translate these constraints directly into allowed values for currentShift:
+      const maxAllowedShift = absoluteMiddleIndex - Math.max(0, (rowLength - 1) - 4);
+      const minAllowedShift = absoluteMiddleIndex - 4;
+
+      // Safe clamp boundaries based on the row's physical limits
+      const finalMinShift = Math.max(-absoluteMiddleIndex, minAllowedShift);
+      const finalMaxShift = Math.min(absoluteMiddleIndex, maxAllowedShift);
+  
+      // Pick a random shift safely inside the allowed envelope
+      const currentShift: number = Math.floor(Math.random() * (finalMaxShift - finalMinShift + 1)) + finalMinShift;
       requiredMovesToSolve += Math.abs(currentShift);
   
+      // 3. Anchor the target letter exactly at the array midpoint
+      // This maintains perfect text alignment and prevents styling breaks
       const targetPositionInArray: number = absoluteMiddleIndex;
+  
       const letters: string[] = [];
       for (let l = 0; l < rowLength; l++) {
         if (l === targetPositionInArray) {
@@ -70,24 +84,23 @@ export function generateScrollyLevel(
         id: i + 1,
         letters: letters,
         currentShift: currentShift,
-        minShift: minShift,
-        maxShift: maxShift,
+        minShift: -absoluteMiddleIndex,
+        maxShift: absoluteMiddleIndex,
         lockedDirection: null
       });
     }
 
-    // 3. Directly target the requested swap range count
+    // Process row position swaps
     let switchMovesCount = 0;
     const availableIndices = Array.from({ length: numRows }, (_, idx) => idx);
 
     while (switchMovesCount < targetSwapsCount && availableIndices.length >= 2) {
       const idxA_pos = Math.floor(Math.random() * availableIndices.length);
-      const indexA = availableIndices.splice(idxA_pos, 1)[0];
+      const indexA = availableIndices.splice(idxA_pos, 1);
 
       const idxB_pos = Math.floor(Math.random() * availableIndices.length);
-      const indexB = availableIndices.splice(idxB_pos, 1)[0];
+      const indexB = availableIndices.splice(idxB_pos, 1);
 
-      // Execute the swap
       const temp = rows[indexA];
       rows[indexA] = rows[indexB];
       rows[indexB] = temp;
@@ -95,7 +108,6 @@ export function generateScrollyLevel(
       switchMovesCount += 1;
     }
   
-    // 4. Combine horizontal displacements with precise vertical layout switch counts
     const initialMoves = requiredMovesToSolve + switchMovesCount;
   
     return {
